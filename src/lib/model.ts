@@ -14,11 +14,19 @@ export interface AvailableModel {
   id: ModelId;
   label: string;
   size: string;
+  backend: 'transformers' | 'llamacpp';
+}
+
+export const LLAMACPP_PREFIX = 'llamacpp:';
+
+export function isLlamaCppModel(id: ModelId): boolean {
+  return id.startsWith(LLAMACPP_PREFIX);
 }
 
 export const AVAILABLE_MODELS: AvailableModel[] = [
-  { id: 'HuggingFaceTB/SmolLM2-135M-Instruct', label: 'SmolLM2 135M Instruct', size: '~270 MB' },
-  { id: 'HuggingFaceTB/SmolLM2-360M-Instruct', label: 'SmolLM2 360M Instruct', size: '~720 MB' },
+  { id: 'HuggingFaceTB/SmolLM2-135M-Instruct', label: 'SmolLM2 135M Instruct', size: '~270 MB', backend: 'transformers' },
+  { id: 'HuggingFaceTB/SmolLM2-360M-Instruct', label: 'SmolLM2 360M Instruct', size: '~720 MB', backend: 'transformers' },
+  { id: `${LLAMACPP_PREFIX}glm-4.7-flash`, label: 'GLM-4.7 Flash (llama.cpp)', size: 'local', backend: 'llamacpp' },
 ];
 
 export interface ModelParams {

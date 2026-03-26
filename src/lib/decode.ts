@@ -11,12 +11,21 @@ import { quantizeLogits } from './quantize';
 import {
   loadModel,
   DEFAULT_MODEL_ID,
+  isLlamaCppModel,
   getPromptIds,
   getStopIds,
   getModelParams,
   getLastLogits,
   type StatusCallback,
 } from './model';
+import {
+  llamaCppTokenize,
+  llamaCppDetokenize,
+  getLlamaCppModelInfo,
+  getLlamaCppLogits,
+  getLlamaCppStopIds,
+  formatChatPrompt,
+} from './llamacpp';
 
 export interface DecodeCallbacks {
   onToken: (piece: string, tokenIndex: number) => void;
@@ -53,6 +62,11 @@ export async function decode(
   modelId: ModelId = DEFAULT_MODEL_ID,
   samplerConfig: SamplerConfig = DEFAULT_SAMPLER_CONFIG,
 ): Promise<void> {
+  if (isLlamaCppModel(modelId)) {
+    await decodeLlamaCpp(systemPrompt, userMessage, seed, callbacks, samplerConfig);
+    return;
+  }
+
   const { tokenizer, model } = await loadModel(callbacks.onStatus, modelId);
   const promptIds = getPromptIds(tokenizer, systemPrompt, userMessage);
   const stopIds = getStopIds(tokenizer);
@@ -96,6 +110,12 @@ export async function prefixSearch(
   modelId: ModelId = DEFAULT_MODEL_ID,
   samplerConfig: SamplerConfig = DEFAULT_SAMPLER_CONFIG,
 ): Promise<PrefixSearchResult | null> {
+  if (isLlamaCppModel(modelId)) {
+    return prefixSearchLlamaCpp(
+      systemPrompt, userMessage, targetText, callbacks, samplerConfig,
+    );
+  }
+
   const { tokenizer, model } = await loadModel(callbacks.onStatus, modelId);
   const promptIds = getPromptIds(tokenizer, systemPrompt, userMessage);
   const { vocabSize, probTotal, probTotalBig } = getModelParams(model);
@@ -270,4 +290,114 @@ export async function substringSearch(
     `Best: ${bestBitLen} bits -> ${bestSeed.toString().length}-digit seed.`,
   );
   return { seed: bestSeed, bitLen: bestBitLen, info: bestInfo };
+}
+
+// ============================================================
+// LLAMA.CPP BACKEND — full arithmetic coding via llama-server
+//
+// Gets the complete probability distribution for each token
+// via llama-server's /completion endpoint with n_probs,
+// preserving the exact same seed→text bijection.
+// ============================================================
+
+async function decodeLlamaCpp(
+  systemPrompt: string,
+  userMessage: string,
+  seed: Seed,
+  callbacks: DecodeCallbacks,
+  samplerConfig: SamplerConfig,
+): Promise<void> {
+  callbacks.onStatus('Connecting to llama-server...');
+
+  const prompt = formatChatPrompt(systemPrompt, userMessage);
+  const promptTokens = await llamaCppTokenize(prompt);
+
+  callbacks.onStatus('Probing model vocabulary...');
+  const { vocabSize, probTotal, probTotalBig } = await getLlamaCppModelInfo(promptTokens);
+  const stopIds = await getLlamaCppStopIds();
+
+  const stream = new BitStream(seed);
+  const decoder = new ArithmeticDecoder(stream);
+  callbacks.onStatus(
+    `Decoding (llama.cpp): vocab=${vocabSize.toLocaleString()}, P=2^${Math.log2(probTotal)}, prec=52`,
+  );
+
+  const contextTokens = [...promptTokens];
+  let n = 0;
+  while (n < MAX_TOKENS) {
+    if (callbacks.shouldStop()) break;
+
+    const logits = await getLlamaCppLogits(contextTokens, vocabSize);
+    const cum = quantizeLogits(logits, vocabSize, probTotal, samplerConfig);
+    const tokId = decoder.decode(cum, probTotalBig);
+
+    if (stopIds.has(tokId)) {
+      callbacks.onStatus(`Done: ${n} tokens, hit EOS.`);
+      break;
+    }
+
+    const piece = await llamaCppDetokenize([tokId]);
+    contextTokens.push(tokId);
+    n++;
+    callbacks.onToken(piece, n);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  if (n >= MAX_TOKENS)
+    callbacks.onStatus(`Stopped at ${MAX_TOKENS} token limit.`);
+}
+
+export async function prefixSearchLlamaCpp(
+  systemPrompt: string,
+  userMessage: string,
+  targetText: string,
+  callbacks: SearchCallbacks,
+  samplerConfig: SamplerConfig,
+): Promise<PrefixSearchResult | null> {
+  callbacks.onStatus('Connecting to llama-server...');
+
+  const prompt = formatChatPrompt(systemPrompt, userMessage);
+  const promptTokens = await llamaCppTokenize(prompt);
+
+  const { vocabSize, probTotal, probTotalBig } = await getLlamaCppModelInfo(promptTokens);
+
+  // Tokenize the target text
+  const targetPrompt = formatChatPrompt(systemPrompt, userMessage) + targetText;
+  const allTokens = await llamaCppTokenize(targetPrompt);
+  const targetIds = allTokens.slice(promptTokens.length);
+
+  if (targetIds.length === 0) {
+    callbacks.onStatus('Target text produced no tokens.');
+    return null;
+  }
+
+  callbacks.onStatus(`Encoding ${targetIds.length} target tokens...`);
+  const encoder = new ArithmeticEncoder();
+  const ctx = [...promptTokens];
+
+  for (let i = 0; i < targetIds.length; i++) {
+    if (callbacks.shouldStop()) return null;
+    const piece = await llamaCppDetokenize([targetIds[i]]);
+    callbacks.onStatus(
+      `Encoding token ${i + 1}/${targetIds.length}: "${piece}"`,
+    );
+    const logits = await getLlamaCppLogits(ctx, vocabSize);
+    const cum = quantizeLogits(logits, vocabSize, probTotal, samplerConfig);
+    encoder.encode(cum, probTotalBig, targetIds[i]);
+    ctx.push(targetIds[i]);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  const bits = encoder.finalize();
+  const foundSeed = bitsToSmallestBigInt(bits);
+  const decoded = await llamaCppDetokenize(targetIds);
+
+  callbacks.onStatus(
+    `Done: ${bits.length} bits -> ${foundSeed.toString().length}-digit seed.`,
+  );
+  return {
+    seed: foundSeed,
+    bitLen: bits.length,
+    tokenCount: targetIds.length,
+    decodedTarget: decoded,
+  };
 }

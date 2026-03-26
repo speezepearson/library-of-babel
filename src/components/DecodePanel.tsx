@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { decode } from '../lib/decode';
 import { BitStream } from '../lib/arithmetic';
+import { isLlamaCppModel } from '../lib/model';
 import type { Seed, ModelId, SamplerConfig } from '../lib/types';
 
 const EXAMPLE_SEEDS = [
@@ -45,6 +46,19 @@ export function DecodePanel({
   const [rational, setRational] = useState('');
   const stopRef = useRef(false);
 
+  const liveBits = useMemo(() => {
+    try {
+      const n = BigInt(seedInput.trim());
+      if (n < 0n) return null;
+      const bs = new BitStream(n);
+      const bits: number[] = [];
+      for (let i = 0; i < 100; i++) bits.push(bs.readBit());
+      return bits.join('');
+    } catch {
+      return null;
+    }
+  }, [seedInput]);
+
   useEffect(() => {
     if (initialSeed !== null) {
       setSeedInput(initialSeed);
@@ -68,8 +82,12 @@ export function DecodePanel({
     setOutput([]);
     setTokenCount(0);
 
-    const bs = new BitStream(seed);
-    setRational(`rational = ${bs.describe()}`);
+    if (isLlamaCppModel(modelId)) {
+      setRational('llama.cpp server (arithmetic coding via HTTP)');
+    } else {
+      const bs = new BitStream(seed);
+      setRational(`rational = ${bs.describe()}`);
+    }
 
     try {
       await decode(systemPrompt, userMessage, seed, {
@@ -108,6 +126,9 @@ export function DecodePanel({
           Any non-negative integer. Different seeds produce different
           completions.
         </div>
+        {liveBits && (
+          <div className="bit-preview">0.{liveBits}</div>
+        )}
       </div>
 
       <div className="controls">

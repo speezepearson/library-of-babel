@@ -10,24 +10,36 @@ export const MAX_TOKENS = 300;
 
 // ============================================================
 // BitStream — bijection N -> (0,1)
-// n -> 0.[binary(n)]1000...
+//
+// n -> 0.[drop_leading_1(binary(n+1))]1000...
+//
+// This maps N onto all dyadic rationals with odd numerator,
+// which are dense in (0,1):
+//   n=0 -> 0.1    = 1/2
+//   n=1 -> 0.01   = 1/4
+//   n=2 -> 0.11   = 3/4
+//   n=3 -> 0.001  = 1/8
+//   n=4 -> 0.011  = 3/8
+//   n=5 -> 0.101  = 5/8
+//   n=6 -> 0.111  = 7/8
+//   ...
 // ============================================================
 export class BitStream {
   private bits: Bit[];
   private pos: number;
 
   constructor(n: Seed) {
-    this.bits = [];
-    if (n === 0n) {
-      this.bits = [0];
-    } else {
-      let tmp = n;
-      while (tmp > 0n) {
-        this.bits.unshift(Number(tmp & 1n) as Bit);
-        tmp >>= 1n;
-      }
+    // Compute m = n+1, write in binary, drop the leading 1, append a 1 marker
+    const m = n + 1n;
+    const raw: Bit[] = [];
+    let tmp = m;
+    while (tmp > 0n) {
+      raw.unshift(Number(tmp & 1n) as Bit);
+      tmp >>= 1n;
     }
-    this.bits.push(1); // bijection marker
+    raw.shift(); // drop leading 1 (always present since m >= 1)
+    raw.push(1); // bijection marker
+    this.bits = raw;
     this.pos = 0;
   }
 
@@ -159,34 +171,46 @@ export class ArithmeticEncoder {
 // Convert encoder output bits -> smallest BigInt whose
 // BitStream starts with those bits.
 //
-// BitStream(n) = [binary(n), 1, 0, 0, ...]
-// We find the smallest n such that this stream starts with B.
+// BitStream(n) produces: [drop_leading_1(binary(n+1)), 1, 0, 0, ...]
+// We call the part before the marker the "payload" (length k).
+//
+// For payload length k, the stream is [B[0..k-1], 1, 0, 0, ...].
+// This matches B iff B[k]==1 (or k>=len) and B[k+1..len-1] are all 0.
+// The corresponding m = n+1 = 1 followed by the payload in binary.
+//
+// We try k = 0, 1, ..., len to find the smallest n.
 // ============================================================
 export function bitsToSmallestBigInt(B: Bit[]): Seed {
-  const m = B.length;
-  if (m === 0) return 0n;
+  const len = B.length;
+  if (len === 0) return 0n;
 
-  // Try marker positions mp = 1, 2, ..., m.
-  // At position mp, the bijection places a '1'.
-  // After mp, the stream is all zeros.
-  // binary(n) = B[0..mp-1], n = int(B[0..mp-1]).
-  for (let mp = 1; mp <= m; mp++) {
-    if (mp < m && B[mp] !== 1) continue;
+  for (let k = 0; k <= len; k++) {
+    // The marker falls at position k in the stream.
+    // If k < len, the encoder's bit at that position must be 1.
+    if (k < len && B[k] !== 1) continue;
+    // All encoder bits after the marker must be 0.
     let ok = true;
-    for (let i = mp + 1; i < m; i++) {
+    for (let i = k + 1; i < len; i++) {
       if (B[i] !== 0) {
         ok = false;
         break;
       }
     }
     if (!ok) continue;
-    let n = 0n;
-    for (let i = 0; i < mp; i++) n = (n << 1n) | BigInt(B[i]);
-    return n;
+
+    // m = binary "1" followed by payload B[0..k-1]
+    let m = 1n << BigInt(k);
+    for (let i = 0; i < k; i++) {
+      m |= BigInt(B[i]) << BigInt(k - 1 - i);
+    }
+    return m - 1n;
   }
 
-  // Fallback: marker after all bits
-  let n = 0n;
-  for (let i = 0; i < m; i++) n = (n << 1n) | BigInt(B[i]);
-  return n;
+  // Fallback (k = len always satisfies the constraints above,
+  // so this is unreachable, but kept for safety)
+  let m = 1n << BigInt(len);
+  for (let i = 0; i < len; i++) {
+    m |= BigInt(B[i]) << BigInt(len - 1 - i);
+  }
+  return m - 1n;
 }

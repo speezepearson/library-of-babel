@@ -7,7 +7,7 @@ import {
   getModelParams,
   getLastLogits,
 } from '../lib/model';
-import { BitStream, ArithmeticDecoder } from '../lib/arithmetic';
+import { BitStream, ArithmeticDecoder, ArithmeticEncoder, bitsToSmallestBigInt } from '../lib/arithmetic';
 import { quantizeLogits } from '../lib/quantize';
 import type { Seed, TokenId } from '../lib/types';
 import type { PreTrainedTokenizer, PreTrainedModel } from '@huggingface/transformers';
@@ -95,5 +95,40 @@ describe('arithmetic decoding smoke test', () => {
       expect(typeof piece).toBe('string');
       expect(piece.length).toBeGreaterThan(0);
     }
+  });
+
+  it('prefix search roundtrips: encode then decode recovers the prefix', async () => {
+    const TARGET = 'The true meaning of life is';
+
+    // Tokenize the target
+    const enc = tokenizer(TARGET, { add_special_tokens: false });
+    const targetIds: TokenId[] = (
+      Array.isArray(enc.input_ids)
+        ? enc.input_ids
+        : Array.from(
+            (enc.input_ids as unknown as { data?: ArrayLike<number> }).data ??
+              (enc.input_ids as unknown as ArrayLike<number>),
+          )
+    ).map(Number);
+
+    // --- ENCODE: target tokens → seed ---
+    const encoder = new ArithmeticEncoder();
+    const ctx = [...promptIds];
+    for (let i = 0; i < targetIds.length; i++) {
+      const logits = await getLastLogits(model, ctx);
+      const cum = quantizeLogits(logits, params.vocabSize, params.probTotal);
+      encoder.encode(cum, params.probTotalBig, targetIds[i]);
+      ctx.push(targetIds[i]);
+    }
+    const bits = encoder.finalize();
+    const seed = bitsToSmallestBigInt(bits);
+
+    // --- DECODE: seed → tokens ---
+    const decoded = await decodeNTokens(
+      model, promptIds, stopIds, params, seed, 50,
+    );
+    const text = tokenizer.decode(decoded, { skip_special_tokens: false });
+
+    expect(text).toMatch(new RegExp('^' + TARGET.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   });
 });

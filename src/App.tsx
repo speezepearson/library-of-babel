@@ -1,6 +1,10 @@
 import { useState, useCallback } from 'react';
 import { DecodePanel } from './components/DecodePanel';
 import { SearchPanel } from './components/SearchPanel';
+import { ModelControls } from './components/ModelControls';
+import { DEFAULT_SAMPLER_CONFIG } from './lib/types';
+import { DEFAULT_MODEL_ID } from './lib/model';
+import type { ModelId, SamplerConfig } from './lib/types';
 import './App.css';
 
 type Tab = 'decode' | 'search';
@@ -14,6 +18,8 @@ function App() {
   );
   const [activeTab, setActiveTab] = useState<Tab>('decode');
   const [seedFromSearch, setSeedFromSearch] = useState<string | null>(null);
+  const [modelId, setModelId] = useState<ModelId>(DEFAULT_MODEL_ID);
+  const [samplerConfig, setSamplerConfig] = useState<SamplerConfig>(DEFAULT_SAMPLER_CONFIG);
 
   const handleUseSeed = useCallback((seed: string) => {
     setSeedFromSearch(seed);
@@ -51,6 +57,13 @@ function App() {
         />
       </div>
 
+      <ModelControls
+        modelId={modelId}
+        onModelIdChange={setModelId}
+        samplerConfig={samplerConfig}
+        onSamplerConfigChange={setSamplerConfig}
+      />
+
       <div className="tabs">
         <button
           className={`tab ${activeTab === 'decode' ? 'active' : ''}`}
@@ -72,6 +85,8 @@ function App() {
           userMessage={userMessage}
           initialSeed={seedFromSearch}
           onSeedConsumed={handleSeedConsumed}
+          modelId={modelId}
+          samplerConfig={samplerConfig}
         />
       )}
       {activeTab === 'search' && (
@@ -79,6 +94,8 @@ function App() {
           systemPrompt={systemPrompt}
           userMessage={userMessage}
           onUseSeed={handleUseSeed}
+          modelId={modelId}
+          samplerConfig={samplerConfig}
         />
       )}
     </div>

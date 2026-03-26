@@ -1,4 +1,5 @@
-import type { VocabSize, ProbTotal } from './types';
+import type { VocabSize, ProbTotal, SamplerConfig } from './types';
+import { DEFAULT_SAMPLER_CONFIG } from './types';
 
 /**
  * Convert raw logits to a cumulative BigInt64Array of integer weights.
@@ -9,16 +10,37 @@ export function quantizeLogits(
   logits: ArrayLike<number>,
   vocabSize: VocabSize,
   probTotal: ProbTotal,
+  config: SamplerConfig = DEFAULT_SAMPLER_CONFIG,
 ): BigInt64Array {
+  // Apply temperature scaling
+  const temp = config.temperature;
+  const scaled = new Float64Array(vocabSize);
+  for (let i = 0; i < vocabSize; i++) {
+    scaled[i] = logits[i] / temp;
+  }
+
+  // Apply top-K: set non-top-K logits to -Infinity
+  if (config.topK > 0 && config.topK < vocabSize) {
+    // Find the k-th largest logit via partial sort
+    const vals = Array.from(scaled);
+    vals.sort((a, b) => b - a);
+    const threshold = vals[config.topK - 1];
+    // Keep tokens at or above threshold; if there are ties at the boundary,
+    // we may keep slightly more than topK, which is fine.
+    for (let i = 0; i < vocabSize; i++) {
+      if (scaled[i] < threshold) scaled[i] = -Infinity;
+    }
+  }
+
   // Stable softmax
   let maxL = -Infinity;
   for (let i = 0; i < vocabSize; i++) {
-    if (logits[i] > maxL) maxL = logits[i];
+    if (scaled[i] > maxL) maxL = scaled[i];
   }
   const probs = new Float64Array(vocabSize);
   let sumE = 0;
   for (let i = 0; i < vocabSize; i++) {
-    probs[i] = Math.exp(logits[i] - maxL);
+    probs[i] = Math.exp(scaled[i] - maxL);
     sumE += probs[i];
   }
   for (let i = 0; i < vocabSize; i++) probs[i] /= sumE;

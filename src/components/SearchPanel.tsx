@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { prefixSearch, substringSearch } from '../lib/decode';
-import type { Seed } from '../lib/types';
+import type { Seed, ModelId, SamplerConfig } from '../lib/types';
 
 type SearchMode = 'prefix' | 'substring';
 
@@ -8,9 +8,11 @@ interface Props {
   systemPrompt: string;
   userMessage: string;
   onUseSeed: (seed: string) => void;
+  modelId: ModelId;
+  samplerConfig: SamplerConfig;
 }
 
-export function SearchPanel({ systemPrompt, userMessage, onUseSeed }: Props) {
+export function SearchPanel({ systemPrompt, userMessage, onUseSeed, modelId, samplerConfig }: Props) {
   const [target, setTarget] = useState('The answer is 42.');
   const [mode, setMode] = useState<SearchMode>('prefix');
   const [maxPrefixLen, setMaxPrefixLen] = useState(15);
@@ -52,6 +54,8 @@ export function SearchPanel({ systemPrompt, userMessage, onUseSeed }: Props) {
           userMessage,
           target,
           callbacks,
+          modelId,
+          samplerConfig,
         );
         if (r) {
           setResult({
@@ -70,6 +74,8 @@ export function SearchPanel({ systemPrompt, userMessage, onUseSeed }: Props) {
           numTrials,
           maxPrefixLen,
           callbacks,
+          modelId,
+          samplerConfig,
         );
         if (r) {
           setResult({ seed: r.seed, info: r.info });
@@ -85,7 +91,7 @@ export function SearchPanel({ systemPrompt, userMessage, onUseSeed }: Props) {
 
     setSpinning(false);
     setIsSearching(false);
-  }, [target, mode, numTrials, maxPrefixLen, systemPrompt, userMessage]);
+  }, [target, mode, numTrials, maxPrefixLen, systemPrompt, userMessage, modelId, samplerConfig]);
 
   return (
     <>

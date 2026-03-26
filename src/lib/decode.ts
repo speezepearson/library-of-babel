@@ -1,4 +1,5 @@
-import type { Seed, TokenId } from './types';
+import type { Seed, TokenId, ModelId, SamplerConfig } from './types';
+import { DEFAULT_SAMPLER_CONFIG } from './types';
 import {
   BitStream,
   ArithmeticDecoder,
@@ -9,6 +10,7 @@ import {
 import { quantizeLogits } from './quantize';
 import {
   loadModel,
+  DEFAULT_MODEL_ID,
   getPromptIds,
   getStopIds,
   getModelParams,
@@ -48,8 +50,10 @@ export async function decode(
   userMessage: string,
   seed: Seed,
   callbacks: DecodeCallbacks,
+  modelId: ModelId = DEFAULT_MODEL_ID,
+  samplerConfig: SamplerConfig = DEFAULT_SAMPLER_CONFIG,
 ): Promise<void> {
-  const { tokenizer, model } = await loadModel(callbacks.onStatus);
+  const { tokenizer, model } = await loadModel(callbacks.onStatus, modelId);
   const promptIds = getPromptIds(tokenizer, systemPrompt, userMessage);
   const stopIds = getStopIds(tokenizer);
   const { vocabSize, probTotal, probTotalBig } = getModelParams(model);
@@ -65,7 +69,7 @@ export async function decode(
   while (n < MAX_TOKENS) {
     if (callbacks.shouldStop()) break;
     const logits = await getLastLogits(model, allIds);
-    const cum = quantizeLogits(logits, vocabSize, probTotal);
+    const cum = quantizeLogits(logits, vocabSize, probTotal, samplerConfig);
     const tokId = decoder.decode(cum, probTotalBig);
     if (stopIds.has(tokId)) {
       callbacks.onStatus(`Done: ${n} tokens, hit EOS.`);
@@ -89,8 +93,10 @@ export async function prefixSearch(
   userMessage: string,
   targetText: string,
   callbacks: SearchCallbacks,
+  modelId: ModelId = DEFAULT_MODEL_ID,
+  samplerConfig: SamplerConfig = DEFAULT_SAMPLER_CONFIG,
 ): Promise<PrefixSearchResult | null> {
-  const { tokenizer, model } = await loadModel(callbacks.onStatus);
+  const { tokenizer, model } = await loadModel(callbacks.onStatus, modelId);
   const promptIds = getPromptIds(tokenizer, systemPrompt, userMessage);
   const { vocabSize, probTotal, probTotalBig } = getModelParams(model);
 
@@ -120,7 +126,7 @@ export async function prefixSearch(
       `Encoding token ${i + 1}/${targetIds.length}: "${tokenizer.decode([targetIds[i]])}"`,
     );
     const logits = await getLastLogits(model, ctx);
-    const cum = quantizeLogits(logits, vocabSize, probTotal);
+    const cum = quantizeLogits(logits, vocabSize, probTotal, samplerConfig);
     encoder.encode(cum, probTotalBig, targetIds[i]);
     ctx.push(targetIds[i]);
     await new Promise((r) => setTimeout(r, 0));
@@ -151,8 +157,10 @@ export async function substringSearch(
   numTrials: number,
   maxPrefixLen: number,
   callbacks: SearchCallbacks,
+  modelId: ModelId = DEFAULT_MODEL_ID,
+  samplerConfig: SamplerConfig = DEFAULT_SAMPLER_CONFIG,
 ): Promise<SubstringSearchResult | null> {
-  const { tokenizer, model } = await loadModel(callbacks.onStatus);
+  const { tokenizer, model } = await loadModel(callbacks.onStatus, modelId);
   const promptIds = getPromptIds(tokenizer, systemPrompt, userMessage);
   const stopIds = getStopIds(tokenizer);
   const { vocabSize, probTotal, probTotalBig } = getModelParams(model);
@@ -194,7 +202,7 @@ export async function substringSearch(
 
     for (let i = 0; i < prefixLen; i++) {
       const logits = await getLastLogits(model, ctx1);
-      const cum = quantizeLogits(logits, vocabSize, probTotal);
+      const cum = quantizeLogits(logits, vocabSize, probTotal, samplerConfig);
       // Weighted random sample
       const r = BigInt(Math.floor(Math.random() * probTotal));
       let a = 0;
@@ -230,7 +238,7 @@ export async function substringSearch(
     for (let i = 0; i < targetIds.length; i++) {
       if (callbacks.shouldStop()) break;
       const logits = await getLastLogits(model, ctx2);
-      const cum = quantizeLogits(logits, vocabSize, probTotal);
+      const cum = quantizeLogits(logits, vocabSize, probTotal, samplerConfig);
       encoder.encode(cum, probTotalBig, targetIds[i]);
       ctx2.push(targetIds[i]);
       await new Promise((r2) => setTimeout(r2, 0));

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { decode } from '../lib/decode';
 import { BitStream } from '../lib/arithmetic';
-import type { Seed } from '../lib/types';
+import type { Seed, ModelId, SamplerConfig } from '../lib/types';
 
 const EXAMPLE_SEEDS = [
   { label: '0', value: '0' },
@@ -20,6 +20,8 @@ interface Props {
   userMessage: string;
   initialSeed: string | null;
   onSeedConsumed: () => void;
+  modelId: ModelId;
+  samplerConfig: SamplerConfig;
 }
 
 export function DecodePanel({
@@ -27,6 +29,8 @@ export function DecodePanel({
   userMessage,
   initialSeed,
   onSeedConsumed,
+  modelId,
+  samplerConfig,
 }: Props) {
   const [seedInput, setSeedInput] = useState(
     '31415926535897932384626433832795028841971',
@@ -80,7 +84,7 @@ export function DecodePanel({
         shouldStop() {
           return stopRef.current;
         },
-      });
+      }, modelId, samplerConfig);
     } catch (err) {
       setStatus(`Error: ${(err as Error).message}`);
       console.error(err);
@@ -88,7 +92,7 @@ export function DecodePanel({
 
     setSpinning(false);
     setIsRunning(false);
-  }, [seedInput, systemPrompt, userMessage]);
+  }, [seedInput, systemPrompt, userMessage, modelId, samplerConfig]);
 
   return (
     <>

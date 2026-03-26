@@ -6,9 +6,20 @@ import {
   type PreTrainedTokenizer,
   type PreTrainedModel,
 } from '@huggingface/transformers';
-import type { TokenId, VocabSize, ProbTotal } from './types';
+import type { TokenId, VocabSize, ProbTotal, ModelId } from './types';
 
-export const MODEL_ID = 'HuggingFaceTB/SmolLM2-135M-Instruct';
+export const DEFAULT_MODEL_ID: ModelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
+
+export interface AvailableModel {
+  id: ModelId;
+  label: string;
+  size: string;
+}
+
+export const AVAILABLE_MODELS: AvailableModel[] = [
+  { id: 'HuggingFaceTB/SmolLM2-135M-Instruct', label: 'SmolLM2 135M Instruct', size: '~270 MB' },
+  { id: 'HuggingFaceTB/SmolLM2-360M-Instruct', label: 'SmolLM2 360M Instruct', size: '~720 MB' },
+];
 
 export interface ModelParams {
   vocabSize: VocabSize;
@@ -25,6 +36,7 @@ export interface ModelBundle {
 
 let _tok: PreTrainedTokenizer | null = null;
 let _mod: PreTrainedModel | null = null;
+let _loadedModelId: ModelId | null = null;
 
 /**
  * Configure the transformers.js environment for Node.js (tests / download script).
@@ -41,11 +53,23 @@ export function resetModel(): void {
   _mod = null;
 }
 
-export async function loadModel(onStatus: StatusCallback): Promise<ModelBundle> {
-  if (_tok && _mod) return { tokenizer: _tok, model: _mod };
+export async function loadModel(
+  onStatus: StatusCallback,
+  modelId: ModelId = DEFAULT_MODEL_ID,
+): Promise<ModelBundle> {
+  if (_tok && _mod && _loadedModelId === modelId) {
+    return { tokenizer: _tok, model: _mod };
+  }
 
-  onStatus('Loading tokenizer...');
-  _tok = await AutoTokenizer.from_pretrained(MODEL_ID);
+  // Different model requested — clear cache
+  if (_loadedModelId !== null && _loadedModelId !== modelId) {
+    onStatus(`Switching model from ${_loadedModelId} to ${modelId}...`);
+    _tok = null;
+    _mod = null;
+  }
+
+  onStatus(`Loading tokenizer for ${modelId}...`);
+  _tok = await AutoTokenizer.from_pretrained(modelId);
 
   onStatus('Loading model weights...');
   const pcb = (p: { status: string; loaded?: number; total?: number }) => {
@@ -56,7 +80,7 @@ export async function loadModel(onStatus: StatusCallback): Promise<ModelBundle> 
   };
 
   try {
-    _mod = await AutoModelForCausalLM.from_pretrained(MODEL_ID, {
+    _mod = await AutoModelForCausalLM.from_pretrained(modelId, {
       dtype: 'fp16',
       device: 'webgpu',
       progress_callback: pcb,
@@ -66,20 +90,21 @@ export async function loadModel(onStatus: StatusCallback): Promise<ModelBundle> 
     // SWALLOW_EXCEPTION: WebGPU not available (e.g. Node.js, older browsers) — fall through to WASM/default
     onStatus('WebGPU unavailable — trying WASM...');
     try {
-      _mod = await AutoModelForCausalLM.from_pretrained(MODEL_ID, {
+      _mod = await AutoModelForCausalLM.from_pretrained(modelId, {
         dtype: 'fp32',
         device: 'wasm',
         progress_callback: pcb,
       });
     } catch {
       // SWALLOW_EXCEPTION: WASM not available — try default device
-      _mod = await AutoModelForCausalLM.from_pretrained(MODEL_ID, {
+      _mod = await AutoModelForCausalLM.from_pretrained(modelId, {
         progress_callback: pcb,
       });
     }
     onStatus('Model loaded (WASM).');
   }
 
+  _loadedModelId = modelId;
   return { tokenizer: _tok, model: _mod };
 }
 

@@ -9,6 +9,71 @@ export const THREE_Q = HALF + QUARTER;
 export const MAX_TOKENS = 300;
 
 // ============================================================
+// Seed scrambling — reversible permutation so that consecutive
+// seeds map to distant points in (0,1).
+//
+// We operate on the "payload" bits of m = n+1 (everything after
+// the leading 1). The scramble is a bijection within each
+// bit-length class:
+//   1. XOR with golden-ratio–derived constant
+//   2. Bit-reverse the payload
+//   3. XOR with a second constant
+//
+// This ensures that consecutive seeds (which differ only in low
+// bits) produce very different high bits after scrambling, so the
+// arithmetic decoder's first tokens diverge.
+// ============================================================
+const PHI_CONST_1 = 0x9E3779B97F4A7C15n; // floor(2^64 * (sqrt(5)-1)/2)
+const PHI_CONST_2 = 0x517CC1B727220A95n; // floor(2^64 * (sqrt(5)-1)/2 * (sqrt(3)-1)/2)
+
+function payloadLength(n: Seed): number {
+  const m = n + 1n;
+  let len = 0;
+  let x = m;
+  while (x > 0n) { x >>= 1n; len++; }
+  return len - 1; // subtract 1 for the leading 1
+}
+
+function reverseBits(x: bigint, k: number): bigint {
+  let result = 0n;
+  let val = x;
+  for (let i = 0; i < k; i++) {
+    result = (result << 1n) | (val & 1n);
+    val >>= 1n;
+  }
+  return result;
+}
+
+export function scramble(n: Seed): Seed {
+  const k = payloadLength(n);
+  if (k <= 0) return n;
+
+  const mask = (1n << BigInt(k)) - 1n;
+  let payload = (n + 1n) & mask;
+
+  payload ^= PHI_CONST_1 & mask;
+  payload = reverseBits(payload, k);
+  payload ^= PHI_CONST_2 & mask;
+
+  return ((1n << BigInt(k)) | payload) - 1n;
+}
+
+export function unscramble(n: Seed): Seed {
+  const k = payloadLength(n);
+  if (k <= 0) return n;
+
+  const mask = (1n << BigInt(k)) - 1n;
+  let payload = (n + 1n) & mask;
+
+  // Reverse the three steps in opposite order
+  payload ^= PHI_CONST_2 & mask;
+  payload = reverseBits(payload, k); // self-inverse
+  payload ^= PHI_CONST_1 & mask;
+
+  return ((1n << BigInt(k)) | payload) - 1n;
+}
+
+// ============================================================
 // BitStream — bijection N -> (0,1)
 //
 // n -> 0.[drop_leading_1(binary(n+1))]1000...
@@ -29,8 +94,8 @@ export class BitStream {
   private pos: number;
 
   constructor(n: Seed) {
-    // Compute m = n+1, write in binary, drop the leading 1, append a 1 marker
-    const m = n + 1n;
+    // Scramble the seed so consecutive inputs map to distant reals
+    const m = scramble(n) + 1n;
     const raw: Bit[] = [];
     let tmp = m;
     while (tmp > 0n) {
@@ -171,18 +236,19 @@ export class ArithmeticEncoder {
 // Convert encoder output bits -> smallest BigInt whose
 // BitStream starts with those bits.
 //
-// BitStream(n) produces: [drop_leading_1(binary(n+1)), 1, 0, 0, ...]
+// BitStream(n) produces: [drop_leading_1(binary(scramble(n)+1)), 1, 0, 0, ...]
 // We call the part before the marker the "payload" (length k).
 //
 // For payload length k, the stream is [B[0..k-1], 1, 0, 0, ...].
 // This matches B iff B[k]==1 (or k>=len) and B[k+1..len-1] are all 0.
-// The corresponding m = n+1 = 1 followed by the payload in binary.
+// The corresponding m = scramble(n)+1 = 1 followed by the payload in binary.
 //
-// We try k = 0, 1, ..., len to find the smallest n.
+// We try k = 0, 1, ..., len to find the smallest internal seed,
+// then unscramble to get the user-facing seed.
 // ============================================================
 export function bitsToSmallestBigInt(B: Bit[]): Seed {
   const len = B.length;
-  if (len === 0) return 0n;
+  if (len === 0) return unscramble(0n);
 
   for (let k = 0; k <= len; k++) {
     // The marker falls at position k in the stream.
@@ -203,7 +269,7 @@ export function bitsToSmallestBigInt(B: Bit[]): Seed {
     for (let i = 0; i < k; i++) {
       m |= BigInt(B[i]) << BigInt(k - 1 - i);
     }
-    return m - 1n;
+    return unscramble(m - 1n);
   }
 
   // Fallback (k = len always satisfies the constraints above,
@@ -212,5 +278,5 @@ export function bitsToSmallestBigInt(B: Bit[]): Seed {
   for (let i = 0; i < len; i++) {
     m |= BigInt(B[i]) << BigInt(len - 1 - i);
   }
-  return m - 1n;
+  return unscramble(m - 1n);
 }

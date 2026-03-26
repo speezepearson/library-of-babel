@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arithmetic LLM Decoder</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #08090d;
+    --surface: #0f1117;
+    --surface2: #161822;
+    --border: #1e2030;
+    --border-focus: #3b4070;
+    --text: #c8cad8;
+    --text-dim: #5c5f77;
+    --text-bright: #e8eaf6;
+    --accent: #7c85e0;
+    --accent-dim: #4a5098;
+    --green: #6dca88;
+    --amber: #d4a053;
+    --red: #d06060;
+    --mono: 'JetBrains Mono', 'Consolas', monospace;
+    --sans: 'DM Sans', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem 1rem 4rem;
+  }
+  .container { max-width: 680px; margin: 0 auto; }
+  header {
+    margin-bottom: 2.5rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 1.5rem;
+  }
+  h1 {
+    font-family: var(--mono);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+    margin-bottom: 0.5rem;
+  }
+  .tagline {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+    max-width: 56ch;
+  }
+  .field { margin-bottom: 1.25rem; }
+  label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.35rem;
+  }
+  textarea, input[type="text"], input[type="number"] {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    background: var(--surface);
+    color: var(--text-bright);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    transition: border-color 0.2s;
+    outline: none;
+  }
+  textarea { height: 3.2rem; resize: vertical; }
+  textarea:focus, input:focus { border-color: var(--border-focus); }
+  .hint {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    margin-top: 0.25rem;
+    font-style: italic;
+  }
+  .controls {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  button {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 0.55rem 1.3rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.02em;
+  }
+  .btn-primary {
+    background: var(--accent-dim);
+    color: var(--text-bright);
+    border-color: var(--accent);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-danger {
+    background: transparent;
+    color: var(--red);
+    border-color: var(--red);
+  }
+  .btn-danger:hover { background: rgba(208,96,96,0.1); }
+  .btn-green {
+    background: transparent;
+    color: var(--green);
+    border-color: var(--green);
+  }
+  .btn-green:hover { background: rgba(109,202,136,0.1); }
+  .status-line {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    padding: 0.5rem 0;
+    min-height: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .spinner {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border: 1.5px solid var(--text-dim);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .output-area {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .output-header {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+    display: flex;
+    justify-content: space-between;
+  }
+  .output-body {
+    padding: 1rem;
+    min-height: 80px;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.7;
+    color: var(--text-bright);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .cursor {
+    display: inline-block;
+    width: 2px; height: 1em;
+    background: var(--accent);
+    margin-left: 1px;
+    animation: blink 1s step-end infinite;
+    vertical-align: text-bottom;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .placeholder { color: var(--text-dim); font-style: italic; }
+  .rational-display {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    padding: 0.5rem 1rem;
+    border-top: 1px solid var(--border);
+    background: var(--surface2);
+    word-break: break-all;
+  }
+  .examples {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+  .examples h3, .section-title {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.5rem;
+  }
+  .example-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .chip {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 0.3rem 0.6rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .chip:hover { border-color: var(--accent-dim); color: var(--accent); }
+
+  /* --- Tabs --- */
+  .tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 0.6rem 1.2rem;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* --- Search panel --- */
+  .search-section {
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid var(--border);
+  }
+  .search-section h2 {
+    font-family: var(--mono);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--amber);
+    margin-bottom: 0.4rem;
+  }
+  .search-section .tagline {
+    margin-bottom: 1.5rem;
+  }
+  .inline-fields {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+  .inline-fields .field {
+    margin-bottom: 0;
+    flex: 1;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+  }
+  .result-box {
+    background: var(--surface);
+    border: 1px solid var(--green);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1rem;
+    display: none;
+  }
+  .result-box .result-label {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--green);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.4rem;
+  }
+  .result-box .result-seed {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--text-bright);
+    word-break: break-all;
+    margin-bottom: 0.5rem;
+    line-height: 1.5;
+  }
+  .result-box .result-info {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    margin-bottom: 0.75rem;
+  }
+  .result-box .result-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>arithmetic_llm_decoder</h1>
+    <p class="tagline">
+      A natural number deterministically selects text from a language model
+      via arithmetic coding. Same seed, same prompt &rarr; same output.
+    </p>
+  </header>
+
+  <!-- ===== Shared prompt fields ===== -->
+  <div class="field">
+    <label for="systemPrompt">System Prompt</label>
+    <textarea id="systemPrompt">You are a helpful, concise assistant.</textarea>
+  </div>
+  <div class="field">
+    <label for="userMessage">User Message</label>
+    <textarea id="userMessage">Tell me something interesting.</textarea>
+  </div>
+
+  <!-- ===== Tabs ===== -->
+  <div class="tabs">
+    <button class="tab active" data-tab="decode">Decode</button>
+    <button class="tab" data-tab="search">Search</button>
+  </div>
+
+  <!-- ==================== DECODE TAB ==================== -->
+  <div class="tab-panel active" id="panel-decode">
+    <div class="field">
+      <label for="bigintInput">Seed (natural number)</label>
+      <input type="text" id="bigintInput" value="31415926535897932384626433832795028841971">
+      <div class="hint">Any non-negative integer. Different seeds produce different completions.</div>
+    </div>
+
+    <div class="controls">
+      <button class="btn-primary" id="generateBtn">Generate</button>
+      <button class="btn-danger" id="stopBtn" style="display:none">Stop</button>
+    </div>
+
+    <div class="status-line" id="status">Ready. Click Generate to load the model (~270 MB on first visit).</div>
+
+    <div class="output-area">
+      <div class="output-header">
+        <span>decoded output</span>
+        <span id="tokenCount"></span>
+      </div>
+      <div class="output-body" id="output"><span class="placeholder">Output will appear here...</span></div>
+      <div class="rational-display" id="rationalDisplay" style="display:none;"></div>
+    </div>
+
+    <div class="examples">
+      <h3>Try a seed</h3>
+      <div class="example-chips">
+        <span class="chip" data-val="0">0</span>
+        <span class="chip" data-val="1">1</span>
+        <span class="chip" data-val="42">42</span>
+        <span class="chip" data-val="999999999999">10^12 - 1</span>
+        <span class="chip" data-val="115792089237316195423570985008687907853269984665640564039457584007913129639935">2^256 - 1</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SEARCH TAB ==================== -->
+  <div class="tab-panel" id="panel-search">
+    <p class="tagline" style="margin-bottom:1.5rem;">
+      Find a seed whose decoded output contains your target text.
+      Prefix search is exact and fast. Substring search tries random
+      prefixes to find a natural lead-in.
+    </p>
+
+    <div class="field">
+      <label for="searchTarget">Target Text</label>
+      <textarea id="searchTarget" style="height:2.6rem;">The answer is 42.</textarea>
+      <div class="hint">The text you want to appear in the decoded output.</div>
+    </div>
+
+    <div class="tabs" style="margin-top:1rem;">
+      <button class="tab active" data-search-mode="prefix">Prefix Search</button>
+      <button class="tab" data-search-mode="substring">Substring Search</button>
+    </div>
+
+    <div id="substringOpts" style="display:none;">
+      <div class="inline-fields">
+        <div class="field">
+          <label for="maxPrefixLen">Max prefix tokens</label>
+          <input type="number" id="maxPrefixLen" value="15" min="3" max="40">
+        </div>
+        <div class="field">
+          <label for="numTrials">Trials</label>
+          <input type="number" id="numTrials" value="12" min="1" max="100">
+        </div>
+      </div>
+      <div class="hint" style="margin-bottom:1rem;">
+        More trials &amp; longer prefixes = smoother lead-in, but slower search.
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn-primary" id="searchBtn">Search</button>
+      <button class="btn-danger" id="searchStopBtn" style="display:none">Stop</button>
+    </div>
+
+    <div class="status-line" id="searchStatus">Ready.</div>
+
+    <div class="result-box" id="searchResult">
+      <div class="result-label">Seed found</div>
+      <div class="result-seed" id="resultSeed"></div>
+      <div class="result-info" id="resultInfo"></div>
+      <div class="result-actions">
+        <button class="btn-green" id="useSeedBtn">Decode this seed &rarr;</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+// ============================================================
+// Imports
+// ============================================================
+import {
+  AutoTokenizer,
+  AutoModelForCausalLM,
+  Tensor,
+} from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3';
+
+// ============================================================
+// Constants
+// ============================================================
+const MODEL_ID  = 'HuggingFaceTB/SmolLM2-135M-Instruct';
+const PRECISION = 52n;
+const WHOLE     = 1n << PRECISION;
+const HALF      = WHOLE >> 1n;
+const QUARTER   = HALF >> 1n;
+const THREE_Q   = HALF + QUARTER;
+const MAX_TOKENS = 300;
+
+// ============================================================
+// BitStream — bijection ℕ → (0,1)
+// n ↦ 0.[binary(n)]1000...₂
+// ============================================================
+class BitStream {
+  constructor(n) {
+    this.bits = [];
+    if (n === 0n) {
+      this.bits = [0];
+    } else {
+      let tmp = n;
+      while (tmp > 0n) {
+        this.bits.unshift(Number(tmp & 1n));
+        tmp >>= 1n;
+      }
+    }
+    this.bits.push(1); // bijection marker
+    this.pos = 0;
+  }
+  readBit() {
+    if (this.pos < this.bits.length) return this.bits[this.pos++];
+    this.pos++;
+    return 0;
+  }
+  describe() {
+    const show = this.bits.slice(0, 64).join('');
+    const suffix = this.bits.length > 64 ? '...' : '';
+    return `0.${show}${suffix}  [${this.bits.length} real bits + inf zeros]`;
+  }
+}
+
+// ============================================================
+// ArithmeticDecoder — range coder, BigInt fixed-point
+// ============================================================
+class ArithmeticDecoder {
+  constructor(stream) {
+    this.s  = stream;
+    this.lo = 0n;
+    this.hi = WHOLE - 1n;
+    this.val = 0n;
+    for (let i = 0n; i < PRECISION; i++) {
+      this.val = (this.val << 1n) | BigInt(this.s.readBit());
+    }
+  }
+  decode(cum, total) {
+    const range  = this.hi - this.lo + 1n;
+    const scaled = ((this.val - this.lo) * total) / range;
+    let a = 0, b = cum.length - 2;
+    while (a < b) {
+      const m = (a + b) >>> 1;
+      if (cum[m + 1] <= scaled) a = m + 1;
+      else b = m;
+    }
+    this.hi = this.lo + (range * cum[a + 1]) / total - 1n;
+    this.lo = this.lo + (range * cum[a])     / total;
+    this._renorm();
+    return a;
+  }
+  _renorm() {
+    for (;;) {
+      if (this.hi < HALF) {
+        // both in lower half
+      } else if (this.lo >= HALF) {
+        this.lo  -= HALF;
+        this.hi  -= HALF;
+        this.val -= HALF;
+      } else if (this.lo >= QUARTER && this.hi < THREE_Q) {
+        this.lo  -= QUARTER;
+        this.hi  -= QUARTER;
+        this.val -= QUARTER;
+      } else break;
+      this.lo  = this.lo << 1n;
+      this.hi  = (this.hi << 1n) | 1n;
+      this.val = (this.val << 1n) | BigInt(this.s.readBit());
+    }
+  }
+}
+
+// ============================================================
+// ArithmeticEncoder — exact mirror of the decoder
+// ============================================================
+class ArithmeticEncoder {
+  constructor() {
+    this.lo = 0n;
+    this.hi = WHOLE - 1n;
+    this.pending = 0;
+    this.bits = [];
+  }
+  _emit(b) {
+    this.bits.push(b);
+    const opp = 1 - b;
+    for (let i = 0; i < this.pending; i++) this.bits.push(opp);
+    this.pending = 0;
+  }
+  encode(cum, total, sym) {
+    const range = this.hi - this.lo + 1n;
+    this.hi = this.lo + (range * cum[sym + 1]) / total - 1n;
+    this.lo = this.lo + (range * cum[sym])     / total;
+    this._renorm();
+  }
+  _renorm() {
+    for (;;) {
+      if (this.hi < HALF) {
+        this._emit(0);
+      } else if (this.lo >= HALF) {
+        this._emit(1);
+        this.lo -= HALF;
+        this.hi -= HALF;
+      } else if (this.lo >= QUARTER && this.hi < THREE_Q) {
+        this.pending++;
+        this.lo -= QUARTER;
+        this.hi -= QUARTER;
+      } else break;
+      this.lo = this.lo << 1n;
+      this.hi = (this.hi << 1n) | 1n;
+    }
+  }
+  finalize() {
+    this.pending++;
+    if (this.lo < QUARTER) this._emit(0);
+    else this._emit(1);
+    return this.bits;
+  }
+}
+
+// ============================================================
+// Convert encoder output bits → smallest BigInt whose
+// BitStream starts with those bits.
+//
+// BitStream(n) = [binary(n), 1, 0, 0, ...]
+// We find the smallest n such that this stream starts with B.
+// ============================================================
+function bitsToSmallestBigInt(B) {
+  const m = B.length;
+  if (m === 0) return 0n;
+  // Try marker positions mp = 1, 2, ..., m.
+  // At position mp, the bijection places a '1'.
+  // After mp, the stream is all zeros.
+  // binary(n) = B[0..mp-1], n = int(B[0..mp-1]).
+  for (let mp = 1; mp <= m; mp++) {
+    // B[mp] must equal 1 (marker), if mp < m
+    if (mp < m && B[mp] !== 1) continue;
+    // B[mp+1..m-1] must all be 0
+    let ok = true;
+    for (let i = mp + 1; i < m; i++) {
+      if (B[i] !== 0) { ok = false; break; }
+    }
+    if (!ok) continue;
+    // binary(n) = B[0..mp-1]
+    let n = 0n;
+    for (let i = 0; i < mp; i++) n = (n << 1n) | BigInt(B[i]);
+    return n;
+  }
+  // Fallback: mp = m (marker after all bits)
+  let n = 0n;
+  for (let i = 0; i < m; i++) n = (n << 1n) | BigInt(B[i]);
+  return n;
+}
+
+// ============================================================
+// Probability quantization
+// ============================================================
+function quantizeLogits(logits, vocabSize, probTotal) {
+  let maxL = -Infinity;
+  for (let i = 0; i < vocabSize; i++) {
+    if (logits[i] > maxL) maxL = logits[i];
+  }
+  const probs = new Float64Array(vocabSize);
+  let sumE = 0;
+  for (let i = 0; i < vocabSize; i++) {
+    probs[i] = Math.exp(logits[i] - maxL);
+    sumE += probs[i];
+  }
+  for (let i = 0; i < vocabSize; i++) probs[i] /= sumE;
+
+  const pool = probTotal - vocabSize;
+  const wt = new Uint32Array(vocabSize);
+  let used = 0;
+  for (let i = 0; i < vocabSize; i++) {
+    const extra = Math.floor(probs[i] * pool);
+    wt[i] = 1 + extra;
+    used += extra;
+  }
+  let leftover = pool - used;
+  if (leftover > 0) {
+    const frac = new Float64Array(vocabSize);
+    for (let i = 0; i < vocabSize; i++) {
+      frac[i] = probs[i] * pool - Math.floor(probs[i] * pool);
+    }
+    const idx = new Uint32Array(vocabSize);
+    for (let i = 0; i < vocabSize; i++) idx[i] = i;
+    idx.sort((a, b) => frac[b] - frac[a]);
+    for (let k = 0; k < leftover; k++) wt[idx[k]]++;
+  }
+
+  const cum = new BigInt64Array(vocabSize + 1);
+  cum[0] = 0n;
+  for (let i = 0; i < vocabSize; i++) cum[i + 1] = cum[i] + BigInt(wt[i]);
+  return cum;
+}
+
+// ============================================================
+// Model management
+// ============================================================
+let _tok = null, _mod = null;
+
+async function loadModel(onStatus) {
+  if (_tok && _mod) return { tokenizer: _tok, model: _mod };
+  onStatus('Loading tokenizer...');
+  _tok = await AutoTokenizer.from_pretrained(MODEL_ID);
+  onStatus('Loading model weights...');
+  const pcb = (p) => {
+    if (p.status === 'progress' && p.total) {
+      const pct = Math.round((p.loaded / p.total) * 100);
+      onStatus(`Downloading: ${(p.loaded/1e6).toFixed(1)} MB (${pct}%)`);
+    }
+  };
+  try {
+    _mod = await AutoModelForCausalLM.from_pretrained(MODEL_ID, { dtype:'fp16', device:'webgpu', progress_callback:pcb });
+    onStatus('Model loaded (WebGPU).');
+  } catch {
+    onStatus('WebGPU unavailable — trying WASM...');
+    try {
+      _mod = await AutoModelForCausalLM.from_pretrained(MODEL_ID, { dtype:'fp32', device:'wasm', progress_callback:pcb });
+    } catch {
+      _mod = await AutoModelForCausalLM.from_pretrained(MODEL_ID, { progress_callback:pcb });
+    }
+    onStatus('Model loaded (WASM).');
+  }
+  return { tokenizer: _tok, model: _mod };
+}
+
+// ============================================================
+// Shared helpers
+// ============================================================
+function getPromptIds(tokenizer, systemPrompt, userMessage) {
+  const msgs = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user',   content: userMessage },
+  ];
+  let ids;
+  try {
+    ids = tokenizer.apply_chat_template(msgs, { add_generation_prompt: true });
+    if (!Array.isArray(ids)) ids = Array.from(ids.data ?? ids);
+  } catch {
+    const raw = `<|im_start|>system\n${systemPrompt}<|im_end|>\n` +
+                `<|im_start|>user\n${userMessage}<|im_end|>\n` +
+                `<|im_start|>assistant\n`;
+    const enc = tokenizer(raw);
+    ids = Array.isArray(enc.input_ids) ? enc.input_ids : Array.from(enc.input_ids.data ?? enc.input_ids);
+  }
+  return ids.map(Number);
+}
+
+function getStopIds(tokenizer) {
+  const s = new Set();
+  if (tokenizer.eos_token_id != null) s.add(Number(tokenizer.eos_token_id));
+  try { const e = tokenizer.encode('<|im_end|>'); if (e?.length) s.add(e[e.length-1]); } catch {}
+  try { const e = tokenizer.encode('<|endoftext|>'); if (e?.length) s.add(e[e.length-1]); } catch {}
+  return s;
+}
+
+function getModelParams(model) {
+  const vocabSize = model.config?.vocab_size ?? 49152;
+  let probBits = 18;
+  while ((1 << probBits) <= vocabSize) probBits++;
+  return { vocabSize, probTotal: 1 << probBits, probTotalBig: BigInt(1 << probBits) };
+}
+
+async function getLastLogits(model, ids) {
+  const seqLength = ids.length;
+  const inp = new Tensor('int64', new BigInt64Array(ids.map(id => BigInt(id))), [1, seqLength]);
+  const maskData = new BigInt64Array(seqLength).fill(1n);
+  const attention_mask = new Tensor('int64', maskData, [1, seqLength]);
+  const posData = new BigInt64Array(seqLength);
+  for (let i = 0; i < seqLength; i++) posData[i] = BigInt(i);
+  const position_ids = new Tensor('int64', posData, [1, seqLength]);
+  const out = await model({ input_ids: inp, attention_mask, position_ids });
+  const [, seqLen, vSz] = out.logits.dims;
+  return out.logits.data.subarray((seqLen - 1) * vSz, seqLen * vSz);
+}
+
+// ============================================================
+// DECODE — read bits from BigInt, produce tokens
+// ============================================================
+async function decode(sysP, userM, seed, { onToken, onStatus, shouldStop }) {
+  const { tokenizer, model } = await loadModel(onStatus);
+  const promptIds = getPromptIds(tokenizer, sysP, userM);
+  const stopIds   = getStopIds(tokenizer);
+  const { vocabSize, probTotal, probTotalBig } = getModelParams(model);
+
+  const stream  = new BitStream(seed);
+  const decoder = new ArithmeticDecoder(stream);
+  onStatus(`Decoding: vocab=${vocabSize.toLocaleString()}, P=2^${Math.log2(probTotal)}, prec=${PRECISION}`);
+
+  const allIds = [...promptIds];
+  let n = 0;
+  while (n < MAX_TOKENS) {
+    if (shouldStop()) break;
+    const logits = await getLastLogits(model, allIds);
+    const cum    = quantizeLogits(logits, vocabSize, probTotal);
+    const tokId  = decoder.decode(cum, probTotalBig);
+    if (stopIds.has(tokId)) { onStatus(`Done: ${n} tokens, hit EOS.`); break; }
+    const piece = tokenizer.decode([tokId], { skip_special_tokens: false });
+    allIds.push(tokId);
+    n++;
+    onToken(piece, n);
+    await new Promise(r => setTimeout(r, 0));
+  }
+  if (n >= MAX_TOKENS) onStatus(`Stopped at ${MAX_TOKENS} token limit.`);
+}
+
+// ============================================================
+// PREFIX SEARCH — encode target tokens → find smallest seed
+// ============================================================
+async function prefixSearch(sysP, userM, targetText, { onStatus, shouldStop }) {
+  const { tokenizer, model } = await loadModel(onStatus);
+  const promptIds = getPromptIds(tokenizer, sysP, userM);
+  const { vocabSize, probTotal, probTotalBig } = getModelParams(model);
+
+  // Tokenize target (no special tokens)
+  let targetIds;
+  try {
+    const enc = tokenizer(targetText, { add_special_tokens: false });
+    targetIds = Array.isArray(enc.input_ids) ? enc.input_ids : Array.from(enc.input_ids.data ?? enc.input_ids);
+  } catch {
+    const enc = tokenizer.encode(targetText);
+    targetIds = Array.isArray(enc) ? enc : Array.from(enc);
+  }
+  targetIds = targetIds.map(Number);
+
+  onStatus(`Encoding ${targetIds.length} target tokens...`);
+  const encoder = new ArithmeticEncoder();
+  const ctx = [...promptIds];
+
+  for (let i = 0; i < targetIds.length; i++) {
+    if (shouldStop()) return null;
+    onStatus(`Encoding token ${i+1}/${targetIds.length}: "${tokenizer.decode([targetIds[i]])}"`);
+    const logits = await getLastLogits(model, ctx);
+    const cum    = quantizeLogits(logits, vocabSize, probTotal);
+    encoder.encode(cum, probTotalBig, targetIds[i]);
+    ctx.push(targetIds[i]);
+    await new Promise(r => setTimeout(r, 0));
+  }
+
+  const bits = encoder.finalize();
+  const seed = bitsToSmallestBigInt(bits);
+  const decoded = tokenizer.decode(targetIds, { skip_special_tokens: false });
+
+  onStatus(`Done: ${bits.length} bits → ${seed.toString().length}-digit seed.`);
+  return { seed, bitLen: bits.length, tokenCount: targetIds.length, decodedTarget: decoded };
+}
+
+// ============================================================
+// SUBSTRING SEARCH — try random prefixes, encode prefix+target
+// ============================================================
+async function substringSearch(sysP, userM, targetText, numTrials, maxPrefixLen, { onStatus, shouldStop }) {
+  const { tokenizer, model } = await loadModel(onStatus);
+  const promptIds = getPromptIds(tokenizer, sysP, userM);
+  const stopIds   = getStopIds(tokenizer);
+  const { vocabSize, probTotal, probTotalBig } = getModelParams(model);
+
+  // Tokenize target
+  let targetIds;
+  try {
+    const enc = tokenizer(targetText, { add_special_tokens: false });
+    targetIds = Array.isArray(enc.input_ids) ? enc.input_ids : Array.from(enc.input_ids.data ?? enc.input_ids);
+  } catch {
+    const enc = tokenizer.encode(targetText);
+    targetIds = Array.isArray(enc) ? enc : Array.from(enc);
+  }
+  targetIds = targetIds.map(Number);
+
+  let bestSeed = null;
+  let bestBitLen = Infinity;
+  let bestInfo = '';
+
+  for (let trial = 0; trial < numTrials; trial++) {
+    if (shouldStop()) break;
+
+    // Random prefix length (3 to maxPrefixLen)
+    const prefixLen = 3 + Math.floor(Math.random() * Math.max(1, maxPrefixLen - 2));
+    onStatus(`Trial ${trial+1}/${numTrials}: sampling ${prefixLen}-token prefix...`);
+
+    // --- Phase 1: sample prefix tokens from model, cache their cum weights ---
+    const prefixIds = [];
+    const prefixCums = [];
+    const ctx1 = [...promptIds];
+    let aborted = false;
+
+    for (let i = 0; i < prefixLen; i++) {
+      const logits = await getLastLogits(model, ctx1);
+      const cum = quantizeLogits(logits, vocabSize, probTotal);
+      // Weighted random sample
+      const r = BigInt(Math.floor(Math.random() * probTotal));
+      let a = 0, b = vocabSize - 1;
+      while (a < b) {
+        const m = (a + b) >>> 1;
+        if (cum[m + 1] <= r) a = m + 1;
+        else b = m;
+      }
+      if (stopIds.has(a)) { aborted = true; break; }
+      prefixIds.push(a);
+      prefixCums.push(cum);
+      ctx1.push(a);
+      await new Promise(r2 => setTimeout(r2, 0));
+    }
+
+    if (aborted || prefixIds.length < 2) continue;
+
+    // --- Phase 2: encode prefix (using cached cums) + target (fresh forward passes) ---
+    onStatus(`Trial ${trial+1}/${numTrials}: encoding ${prefixIds.length}+${targetIds.length} tokens...`);
+    const encoder = new ArithmeticEncoder();
+
+    // Encode prefix using cached cumulative weights (no extra forward passes!)
+    for (let i = 0; i < prefixIds.length; i++) {
+      encoder.encode(prefixCums[i], probTotalBig, prefixIds[i]);
+    }
+
+    // Encode target using fresh forward passes
+    const ctx2 = [...promptIds, ...prefixIds];
+    for (let i = 0; i < targetIds.length; i++) {
+      if (shouldStop()) break;
+      const logits = await getLastLogits(model, ctx2);
+      const cum = quantizeLogits(logits, vocabSize, probTotal);
+      encoder.encode(cum, probTotalBig, targetIds[i]);
+      ctx2.push(targetIds[i]);
+      await new Promise(r2 => setTimeout(r2, 0));
+    }
+
+    const bits = encoder.finalize();
+    const seed = bitsToSmallestBigInt(bits);
+
+    if (bits.length < bestBitLen) {
+      bestBitLen = bits.length;
+      bestSeed = seed;
+      const prefixText = tokenizer.decode(prefixIds, { skip_special_tokens: true });
+      const targetDecoded = tokenizer.decode(targetIds, { skip_special_tokens: false });
+      bestInfo = `${bits.length} bits | prefix: "${prefixText.slice(0,80)}" → "${targetDecoded}"`;
+      onStatus(`Trial ${trial+1}: new best — ${bits.length} bits (${seed.toString().length} digits)`);
+    }
+
+    await new Promise(r2 => setTimeout(r2, 0));
+  }
+
+  if (!bestSeed) return null;
+  onStatus(`Best: ${bestBitLen} bits → ${bestSeed.toString().length}-digit seed.`);
+  return { seed: bestSeed, bitLen: bestBitLen, info: bestInfo };
+}
+
+
+// ============================================================
+// UI
+// ============================================================
+const $ = (s) => document.querySelector(s);
+
+// --- Tab switching ---
+let searchMode = 'prefix';
+
+document.querySelectorAll('.tabs .tab[data-tab]').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tabs .tab[data-tab]').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    $(`#panel-${t.dataset.tab}`).classList.add('active');
+  });
+});
+
+document.querySelectorAll('.tab[data-search-mode]').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab[data-search-mode]').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    searchMode = t.dataset.searchMode;
+    $('#substringOpts').style.display = searchMode === 'substring' ? 'block' : 'none';
+  });
+});
+
+// --- Decode UI ---
+const genBtn  = $('#generateBtn');
+const stopBtn = $('#stopBtn');
+const outputEl = $('#output');
+let stopDecode = false;
+
+function setDecodeStatus(msg, spin=true) {
+  $('#status').innerHTML = spin ? `<span class="spinner"></span> ${msg}` : msg;
+}
+
+genBtn.addEventListener('click', async () => {
+  let seed;
+  try {
+    seed = BigInt($('#bigintInput').value.trim());
+    if (seed < 0n) throw 0;
+  } catch { setDecodeStatus('Invalid seed.', false); return; }
+
+  genBtn.disabled = true;
+  stopBtn.style.display = 'inline-block';
+  stopDecode = false;
+  outputEl.innerHTML = '<span class="cursor"></span>';
+  $('#tokenCount').textContent = '';
+
+  const bs = new BitStream(seed);
+  const rd = $('#rationalDisplay');
+  rd.textContent = `rational = ${bs.describe()}`;
+  rd.style.display = 'block';
+
+  try {
+    await decode($('#systemPrompt').value, $('#userMessage').value, seed, {
+      onToken(piece, n) {
+        outputEl.querySelector('.cursor')?.remove();
+        outputEl.appendChild(document.createTextNode(piece));
+        const c = document.createElement('span'); c.className='cursor';
+        outputEl.appendChild(c);
+        $('#tokenCount').textContent = `${n} tok`;
+      },
+      onStatus(m) { setDecodeStatus(m, true); },
+      shouldStop() { return stopDecode; },
+    });
+  } catch (err) { setDecodeStatus(`Error: ${err.message}`, false); console.error(err); }
+
+  outputEl.querySelector('.cursor')?.remove();
+  genBtn.disabled = false;
+  stopBtn.style.display = 'none';
+});
+
+stopBtn.addEventListener('click', () => { stopDecode = true; setDecodeStatus('Stopping...'); });
+
+// Example chips
+document.querySelectorAll('.chip[data-val]').forEach(c => {
+  c.addEventListener('click', () => { $('#bigintInput').value = c.dataset.val; });
+});
+
+// --- Search UI ---
+const searchBtn    = $('#searchBtn');
+const searchStop   = $('#searchStopBtn');
+const resultBox    = $('#searchResult');
+let stopSearch = false;
+
+function setSearchStatus(msg, spin=true) {
+  $('#searchStatus').innerHTML = spin ? `<span class="spinner"></span> ${msg}` : msg;
+}
+
+searchBtn.addEventListener('click', async () => {
+  const target = $('#searchTarget').value;
+  if (!target.trim()) { setSearchStatus('Enter target text.', false); return; }
+
+  searchBtn.disabled = true;
+  searchStop.style.display = 'inline-block';
+  stopSearch = false;
+  resultBox.style.display = 'none';
+
+  const sysP = $('#systemPrompt').value;
+  const userM = $('#userMessage').value;
+
+  try {
+    let result;
+    if (searchMode === 'prefix') {
+      result = await prefixSearch(sysP, userM, target, {
+        onStatus(m) { setSearchStatus(m); },
+        shouldStop() { return stopSearch; },
+      });
+    } else {
+      const trials = parseInt($('#numTrials').value) || 12;
+      const maxPL  = parseInt($('#maxPrefixLen').value) || 15;
+      result = await substringSearch(sysP, userM, target, trials, maxPL, {
+        onStatus(m) { setSearchStatus(m); },
+        shouldStop() { return stopSearch; },
+      });
+    }
+
+    if (result) {
+      const seedStr = result.seed.toString();
+      $('#resultSeed').textContent = seedStr;
+      const info = result.info
+        ?? `${result.bitLen} bits, ${result.tokenCount ?? '?'} tokens`;
+      $('#resultInfo').textContent = info;
+      resultBox.style.display = 'block';
+      setSearchStatus('Search complete.', false);
+    } else {
+      setSearchStatus('Search stopped or no result found.', false);
+    }
+  } catch (err) {
+    setSearchStatus(`Error: ${err.message}`, false);
+    console.error(err);
+  }
+
+  searchBtn.disabled = false;
+  searchStop.style.display = 'none';
+});
+
+searchStop.addEventListener('click', () => { stopSearch = true; setSearchStatus('Stopping...'); });
+
+// "Use this seed" button — switch to Decode tab and populate
+$('#useSeedBtn').addEventListener('click', () => {
+  const seed = $('#resultSeed').textContent;
+  $('#bigintInput').value = seed;
+  // Switch to decode tab
+  document.querySelectorAll('.tabs .tab[data-tab]').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+  document.querySelector('.tab[data-tab="decode"]').classList.add('active');
+  $('#panel-decode').classList.add('active');
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+Add a second UI, used if the URL fragment is `#fancy`. It should display a 3D model of a bookshelf with 5 rows, each row containing 32 books. Clicking on a book should show a piece of paper in front of the camera; the words from the LLM sample are streamed into the page. (The seed for the sample should be the book number, 0 <= n < 5*32).

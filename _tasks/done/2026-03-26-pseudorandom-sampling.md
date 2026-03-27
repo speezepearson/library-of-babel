@@ -1,0 +1,1 @@
+Change the BigInt<->[real between 0 and 1] logic to be more pseudorandom: the sample for (n+1) should not contain a substantially similar prefix to the sample for n. (For example: 437592987456924 and 437592987456925 currently both begin "Several decades ago".)

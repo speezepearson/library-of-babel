@@ -1,0 +1,1 @@
+I'm not super happy with the LLM underlying this app. Please help me experiment: add to the UI ways to change the temperature, choose different models (fetched from CDN), and any other levers you think might change the qualities of the outputs.

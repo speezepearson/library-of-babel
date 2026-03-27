@@ -14,18 +14,19 @@ const BASE = '/llamacpp';
 // Types for llama-server JSON responses
 // ---------------------------------------------------------------------------
 
-interface LlamaCppProbEntry {
-  /** Token ID (present in recent llama.cpp builds). */
-  id?: number;
+interface LlamaCppLogprobEntry {
+  /** Token ID. */
+  id: number;
   /** Token string. */
-  tok_str?: string;
-  /** Probability (0..1). */
-  prob: number;
+  token: string;
+  /** Log-probability. */
+  logprob: number;
 }
 
 interface LlamaCppCompletionProb {
-  content: string;
-  probs: LlamaCppProbEntry[];
+  id: number;
+  token: string;
+  top_logprobs: LlamaCppLogprobEntry[];
 }
 
 interface LlamaCppCompletionResponse {
@@ -61,7 +62,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     });
   } catch (err) {
     throw new Error(
-      `Cannot reach llama-server at localhost:8080. Is it running? (${(err as Error).message})`,
+      `Cannot reach llama-server at ${BASE}${path}! Is it running? (${(err as Error).message})`,
     );
   }
   if (!resp.ok) {
@@ -101,20 +102,22 @@ export async function getLlamaCppModelInfo(
     n_predict: 1,
     n_probs: 999999,
     temperature: 1.0,
-    cache_prompt: true,
+    cache_prompt: false,
   });
 
-  const probs = data.completion_probabilities?.[0]?.probs ?? [];
-  if (probs.length === 0) {
+  const topLogprobs = data.completion_probabilities?.[0]?.top_logprobs ?? [];
+  if (topLogprobs.length === 0) {
     throw new Error(
       'llama-server returned no probabilities. Make sure n_probs is supported.',
     );
   }
 
   // The number of entries returned = vocab_size (server clamps n_probs)
-  const vocabSize = probs.length as VocabSize;
-  let probBits = 18;
-  while ((1 << probBits) <= vocabSize) probBits++;
+  const vocabSize = topLogprobs.length as VocabSize;
+  // Use probTotal much larger than vocabSize so the mandatory weight-1 base
+  // per token is negligible. With probBits=30, base allocation is ~0.02% of
+  // total weight instead of ~50% when probBits was just vocabSize's bit width + 1.
+  const probBits = 30;
   const probTotal: ProbTotal = 1 << probBits;
 
   _cachedInfo = { vocabSize, probTotal, probTotalBig: BigInt(probTotal) };
@@ -145,20 +148,20 @@ export async function getLlamaCppLogits(
     temperature: 1.0, // No temperature — we apply our own in quantizeLogits
     top_k: 0, // No filtering — we need the full distribution
     top_p: 1.0,
-    cache_prompt: true,
+    min_p: 0.0, // Disable min_p filtering (server default is 0.05)
+    cache_prompt: false, // KV cache reuse causes nondeterministic logprobs
   });
 
-  const probEntries = data.completion_probabilities?.[0]?.probs ?? [];
+  const topLogprobs = data.completion_probabilities?.[0]?.top_logprobs ?? [];
 
-  // Build dense logit array: log(prob) for known tokens, -Infinity for rest
+  // Build dense logit array from log-probabilities, -Infinity for tokens not in top_logprobs
   const logits = new Float32Array(vocabSize);
   logits.fill(-Infinity);
 
-  for (let i = 0; i < probEntries.length; i++) {
-    const entry = probEntries[i];
-    const id = entry.id ?? i; // Fall back to positional index if id is missing
-    if (id >= 0 && id < vocabSize && entry.prob > 0) {
-      logits[id] = Math.log(entry.prob);
+  for (let i = 0; i < topLogprobs.length; i++) {
+    const entry = topLogprobs[i];
+    if (entry.id >= 0 && entry.id < vocabSize) {
+      logits[entry.id] = entry.logprob;
     }
   }
 

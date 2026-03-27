@@ -1,0 +1,108 @@
+{
+  "numStartups": 1,
+  "installMethod": "native",
+  "autoUpdates": false,
+  "cachedGrowthBookFeatures": {
+    "tengu_event_sampling_config": {},
+    "tengu_log_segment_events": false,
+    "tengu_log_datadog_events": true,
+    "tengu_mcp_tool_search": true,
+    "tengu_marble_anvil": true,
+    "tengu_tool_pear": false,
+    "tengu_scarf_coffee": false,
+    "tengu_chomp_inflection": true,
+    "tengu_marble_sandcastle": true,
+    "tengu_penguins_off": null,
+    "tengu_streaming_text": false,
+    "tengu-top-of-feed-tip": {
+      "tip": "",
+      "color": ""
+    },
+    "tengu_mcp_elicitation": false,
+    "tengu_keybinding_customization_release": true,
+    "tengu_post_compact_survey": false,
+    "tengu_disable_bypass_permissions_mode": false,
+    "tengu_claudeai_mcp_connectors": true,
+    "tengu_pebble_leaf_prune": false,
+    "tengu_tool_search_unsupported_models": [
+      "haiku"
+    ],
+    "tengu_system_prompt_global_cache": true,
+    "tengu_attribution_header": true,
+    "enhanced_telemetry_beta": false,
+    "tengu_pr_status_cli": true,
+    "tengu_ccr_bridge": true,
+    "tengu_pid_based_version_locking": true
+  },
+  "opusProMigrationComplete": true,
+  "sonnet1m45MigrationComplete": true,
+  "autoUpdatesProtectedForNative": true,
+  "cachedChromeExtensionInstalled": false,
+  "hasCompletedOnboarding": true,
+  "lastOnboardingVersion": "2.1.63",
+  "projects": {
+    "/app": {
+      "allowedTools": [],
+      "mcpContextUris": [],
+      "mcpServers": {},
+      "enabledMcpjsonServers": [],
+      "disabledMcpjsonServers": [],
+      "hasTrustDialogAccepted": true,
+      "projectOnboardingSeenCount": 1,
+      "hasClaudeMdExternalIncludesApproved": false,
+      "hasClaudeMdExternalIncludesWarningShown": false,
+      "lastCost": 0.0001,
+      "lastAPIDuration": 617,
+      "lastAPIDurationWithoutRetries": 617,
+      "lastToolDuration": 0,
+      "lastDuration": 30000,
+      "lastLinesAdded": 0,
+      "lastLinesRemoved": 0,
+      "lastTotalInputTokens": 100,
+      "lastTotalOutputTokens": 10,
+      "lastTotalCacheCreationInputTokens": 0,
+      "lastTotalCacheReadInputTokens": 0,
+      "lastTotalWebSearchRequests": 0,
+      "lastFpsAverage": 1.47,
+      "lastFpsLow1Pct": 145.99,
+      "lastModelUsage": {
+        "claude-haiku-4-5-20251001": {
+          "inputTokens": 100,
+          "outputTokens": 10,
+          "cacheReadInputTokens": 0,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.0001
+        }
+      },
+      "lastSessionMetrics": {
+        "frame_duration_ms_count": 50,
+        "frame_duration_ms_min": 0.0,
+        "frame_duration_ms_max": 6.0,
+        "frame_duration_ms_avg": 2.0,
+        "frame_duration_ms_p50": 1.0,
+        "frame_duration_ms_p95": 5.0,
+        "frame_duration_ms_p99": 6.0
+      }
+    }
+  },
+  "lastReleaseNotesSeen": "2.1.63",
+  "hasShownOpus46Notice": {
+    "00000000-0000-0000-0000-000000000000": true
+  },
+  "effortCalloutDismissed": true,
+  "groveConfigCache": {
+    "00000000-0000-0000-0000-000000000000": {
+      "grove_enabled": true,
+      "timestamp": 1772331189000
+    }
+  },
+  "penguinModeOrgEnabled": false,
+  "clientDataCache": {
+    "data": {},
+    "timestamp": 1772331189000
+  },
+  "cachedExtraUsageDisabledReason": "org_level_disabled",
+  "officialMarketplaceAutoInstallAttempted": true,
+  "officialMarketplaceAutoInstalled": true
+}

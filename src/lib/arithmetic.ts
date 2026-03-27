@@ -97,18 +97,31 @@ export class ArithmeticDecoder {
     }
   }
 
-  decode(cum: BigInt64Array, total: bigint): number {
+  /**
+   * Decode a symbol given cumulative probabilities in (0, 1].
+   * cum[i] is the cumulative probability up to and including token i.
+   * cum[cum.length-1] must be exactly 1.
+   */
+  decode(cum: number[]): number {
     const range = this.hi - this.lo + 1n;
-    const scaled = ((this.val - this.lo) * total) / range;
+    // Map val to a position within the cumulative distribution
+    const pos = this.val - this.lo;
+    // Binary search: find smallest a such that cum[a] * range > pos
+    // (equivalent to: val falls in the bin for token a)
     let a = 0;
-    let b = cum.length - 2;
+    let b = cum.length - 1;
     while (a < b) {
       const m = (a + b) >>> 1;
-      if (cum[m + 1] <= scaled) a = m + 1;
+      // Convert cum[m] to fixed-point boundary
+      const boundary = BigInt(Math.floor(cum[m] * Number(range)));
+      if (boundary <= pos) a = m + 1;
       else b = m;
     }
-    this.hi = this.lo + (range * cum[a + 1]) / total - 1n;
-    this.lo = this.lo + (range * cum[a]) / total;
+    // Update interval: lo_new = lo + cum[a-1] * range, hi_new = lo + cum[a] * range - 1
+    const cumHi = a < cum.length ? cum[a] : 1;
+    const cumLo = a > 0 ? cum[a - 1] : 0;
+    this.hi = this.lo + BigInt(Math.floor(cumHi * Number(range))) - 1n;
+    this.lo = this.lo + BigInt(Math.floor(cumLo * Number(range)));
     this._renorm();
     return a;
   }
@@ -156,10 +169,16 @@ export class ArithmeticEncoder {
     this.pending = 0;
   }
 
-  encode(cum: BigInt64Array, total: bigint, sym: number): void {
+  /**
+   * Encode a symbol given cumulative probabilities in (0, 1].
+   * cum[i] is the cumulative probability up to and including token i.
+   */
+  encode(cum: number[], sym: number): void {
     const range = this.hi - this.lo + 1n;
-    this.hi = this.lo + (range * cum[sym + 1]) / total - 1n;
-    this.lo = this.lo + (range * cum[sym]) / total;
+    const cumHi = cum[sym];
+    const cumLo = sym > 0 ? cum[sym - 1] : 0;
+    this.hi = this.lo + BigInt(Math.floor(cumHi * Number(range))) - 1n;
+    this.lo = this.lo + BigInt(Math.floor(cumLo * Number(range)));
     this._renorm();
   }
 

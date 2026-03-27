@@ -10,9 +10,6 @@ export type Bit = 0 | 1;
 /** The size of the model's vocabulary. */
 export type VocabSize = number;
 
-/** Total probability mass for quantized distribution (a power of 2). */
-export type ProbTotal = number;
-
 /** HuggingFace model identifier. */
 export type ModelId = string;
 

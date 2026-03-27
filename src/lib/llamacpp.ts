@@ -1,4 +1,4 @@
-import type { TokenId, VocabSize, ProbTotal } from './types';
+import type { TokenId, VocabSize } from './types';
 
 /**
  * Client for llama.cpp's llama-server HTTP API.
@@ -42,8 +42,6 @@ interface LlamaCppCompletionResponse {
 
 export interface LlamaCppModelInfo {
   vocabSize: VocabSize;
-  probTotal: ProbTotal;
-  probTotalBig: bigint;
 }
 
 let _cachedInfo: LlamaCppModelInfo | null = null;
@@ -89,7 +87,6 @@ export async function llamaCppDetokenize(tokens: TokenId[]): Promise<string> {
 /**
  * Discover the model's vocab size by making a probe completion request
  * with n_probs set very high (the server clamps to vocab size).
- * Then compute probTotal (next power of 2 >= vocabSize).
  */
 export async function getLlamaCppModelInfo(
   promptTokens: TokenId[],
@@ -114,13 +111,8 @@ export async function getLlamaCppModelInfo(
 
   // The number of entries returned = vocab_size (server clamps n_probs)
   const vocabSize = topLogprobs.length as VocabSize;
-  // Use probTotal much larger than vocabSize so the mandatory weight-1 base
-  // per token is negligible. With probBits=30, base allocation is ~0.02% of
-  // total weight instead of ~50% when probBits was just vocabSize's bit width + 1.
-  const probBits = 30;
-  const probTotal: ProbTotal = 1 << probBits;
 
-  _cachedInfo = { vocabSize, probTotal, probTotalBig: BigInt(probTotal) };
+  _cachedInfo = { vocabSize };
   return _cachedInfo;
 }
 

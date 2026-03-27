@@ -6,7 +6,7 @@ import {
   type PreTrainedTokenizer,
   type PreTrainedModel,
 } from '@huggingface/transformers';
-import type { TokenId, VocabSize, ProbTotal, ModelId } from './types';
+import type { TokenId, VocabSize, ModelId } from './types';
 
 export const DEFAULT_MODEL_ID: ModelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
 
@@ -31,8 +31,6 @@ export const AVAILABLE_MODELS: AvailableModel[] = [
 
 export interface ModelParams {
   vocabSize: VocabSize;
-  probTotal: ProbTotal;
-  probTotalBig: bigint;
 }
 
 export type StatusCallback = (message: string) => void;
@@ -178,10 +176,7 @@ export function getModelParams(model: PreTrainedModel): ModelParams {
   // DEFAULT_VALUE: SmolLM2 vocab size is 49152; config.vocab_size should always be present
   const vocabSize: VocabSize =
     (model.config as { vocab_size?: number })?.vocab_size ?? 49152;
-  let probBits = 18;
-  while ((1 << probBits) <= vocabSize) probBits++;
-  const probTotal: ProbTotal = 1 << probBits;
-  return { vocabSize, probTotal, probTotalBig: BigInt(probTotal) };
+  return { vocabSize };
 }
 
 export async function getLastLogits(

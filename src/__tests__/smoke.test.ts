@@ -33,8 +33,8 @@ async function decodeNTokens(
 
   for (let n = 0; n < maxTokens; n++) {
     const logits = await getLastLogits(model, allIds);
-    const cum = quantizeLogits(logits, params.vocabSize, params.probTotal);
-    const tokId = decoder.decode(cum, params.probTotalBig);
+    const cum = quantizeLogits(logits, params.vocabSize);
+    const tokId = decoder.decode(cum);
     if (stopIds.has(tokId)) break;
     allIds.push(tokId);
     decoded.push(tokId);
@@ -116,8 +116,8 @@ describe('arithmetic decoding smoke test', () => {
     const ctx = [...promptIds];
     for (let i = 0; i < targetIds.length; i++) {
       const logits = await getLastLogits(model, ctx);
-      const cum = quantizeLogits(logits, params.vocabSize, params.probTotal);
-      encoder.encode(cum, params.probTotalBig, targetIds[i]);
+      const cum = quantizeLogits(logits, params.vocabSize);
+      encoder.encode(cum, targetIds[i]);
       ctx.push(targetIds[i]);
     }
     const bits = encoder.finalize();

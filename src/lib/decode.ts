@@ -70,12 +70,12 @@ export async function decode(
   const { tokenizer, model } = await loadModel(callbacks.onStatus, modelId);
   const promptIds = getPromptIds(tokenizer, systemPrompt, userMessage);
   const stopIds = getStopIds(tokenizer);
-  const { vocabSize, probTotal, probTotalBig } = getModelParams(model);
+  const { vocabSize } = getModelParams(model);
 
   const stream = new BitStream(seed);
   const decoder = new ArithmeticDecoder(stream);
   callbacks.onStatus(
-    `Decoding: vocab=${vocabSize.toLocaleString()}, P=2^${Math.log2(probTotal)}, prec=${52}`,
+    `Decoding: vocab=${vocabSize.toLocaleString()}, prec=${52}`,
   );
 
   const allIds = [...promptIds];
@@ -83,8 +83,8 @@ export async function decode(
   while (n < MAX_TOKENS) {
     if (callbacks.shouldStop()) break;
     const logits = await getLastLogits(model, allIds);
-    const cum = quantizeLogits(logits, vocabSize, probTotal, samplerConfig);
-    const tokId = decoder.decode(cum, probTotalBig);
+    const cum = quantizeLogits(logits, vocabSize, samplerConfig);
+    const tokId = decoder.decode(cum);
     if (stopIds.has(tokId)) {
       callbacks.onStatus(`Done: ${n} tokens, hit EOS.`);
       break;
@@ -118,7 +118,7 @@ export async function prefixSearch(
 
   const { tokenizer, model } = await loadModel(callbacks.onStatus, modelId);
   const promptIds = getPromptIds(tokenizer, systemPrompt, userMessage);
-  const { vocabSize, probTotal, probTotalBig } = getModelParams(model);
+  const { vocabSize } = getModelParams(model);
 
   let targetIds: TokenId[];
   try {
@@ -146,8 +146,8 @@ export async function prefixSearch(
       `Encoding token ${i + 1}/${targetIds.length}: "${tokenizer.decode([targetIds[i]])}"`,
     );
     const logits = await getLastLogits(model, ctx);
-    const cum = quantizeLogits(logits, vocabSize, probTotal, samplerConfig);
-    encoder.encode(cum, probTotalBig, targetIds[i]);
+    const cum = quantizeLogits(logits, vocabSize, samplerConfig);
+    encoder.encode(cum, targetIds[i]);
     ctx.push(targetIds[i]);
     await new Promise((r) => setTimeout(r, 0));
   }
@@ -183,7 +183,7 @@ export async function substringSearch(
   const { tokenizer, model } = await loadModel(callbacks.onStatus, modelId);
   const promptIds = getPromptIds(tokenizer, systemPrompt, userMessage);
   const stopIds = getStopIds(tokenizer);
-  const { vocabSize, probTotal, probTotalBig } = getModelParams(model);
+  const { vocabSize } = getModelParams(model);
 
   let targetIds: TokenId[];
   try {
@@ -216,20 +216,20 @@ export async function substringSearch(
 
     // Phase 1: sample prefix tokens, cache cumulative weights
     const prefixIds: TokenId[] = [];
-    const prefixCums: BigInt64Array[] = [];
+    const prefixCums: number[][] = [];
     const ctx1 = [...promptIds];
     let aborted = false;
 
     for (let i = 0; i < prefixLen; i++) {
       const logits = await getLastLogits(model, ctx1);
-      const cum = quantizeLogits(logits, vocabSize, probTotal, samplerConfig);
-      // Weighted random sample
-      const r = BigInt(Math.floor(Math.random() * probTotal));
+      const cum = quantizeLogits(logits, vocabSize, samplerConfig);
+      // Weighted random sample: pick token whose bin contains r
+      const r = Math.random();
       let a = 0;
       let b = vocabSize - 1;
       while (a < b) {
         const m = (a + b) >>> 1;
-        if (cum[m + 1] <= r) a = m + 1;
+        if (cum[m] <= r) a = m + 1;
         else b = m;
       }
       if (stopIds.has(a)) {
@@ -251,15 +251,15 @@ export async function substringSearch(
     const encoder = new ArithmeticEncoder();
 
     for (let i = 0; i < prefixIds.length; i++) {
-      encoder.encode(prefixCums[i], probTotalBig, prefixIds[i]);
+      encoder.encode(prefixCums[i], prefixIds[i]);
     }
 
     const ctx2 = [...promptIds, ...prefixIds];
     for (let i = 0; i < targetIds.length; i++) {
       if (callbacks.shouldStop()) break;
       const logits = await getLastLogits(model, ctx2);
-      const cum = quantizeLogits(logits, vocabSize, probTotal, samplerConfig);
-      encoder.encode(cum, probTotalBig, targetIds[i]);
+      const cum = quantizeLogits(logits, vocabSize, samplerConfig);
+      encoder.encode(cum, targetIds[i]);
       ctx2.push(targetIds[i]);
       await new Promise((r2) => setTimeout(r2, 0));
     }
@@ -313,13 +313,13 @@ async function decodeLlamaCpp(
   const promptTokens = await llamaCppTokenize(prompt);
 
   callbacks.onStatus('Probing model vocabulary...');
-  const { vocabSize, probTotal, probTotalBig } = await getLlamaCppModelInfo(promptTokens);
+  const { vocabSize } = await getLlamaCppModelInfo(promptTokens);
   const stopIds = await getLlamaCppStopIds();
 
   const stream = new BitStream(seed);
   const decoder = new ArithmeticDecoder(stream);
   callbacks.onStatus(
-    `Decoding (llama.cpp): vocab=${vocabSize.toLocaleString()}, P=2^${Math.log2(probTotal)}, prec=52`,
+    `Decoding (llama.cpp): vocab=${vocabSize.toLocaleString()}, prec=52`,
   );
 
   const contextTokens = [...promptTokens];
@@ -328,8 +328,8 @@ async function decodeLlamaCpp(
     if (callbacks.shouldStop()) break;
 
     const logits = await getLlamaCppLogits(contextTokens, vocabSize);
-    const cum = quantizeLogits(logits, vocabSize, probTotal, samplerConfig);
-    const tokId = decoder.decode(cum, probTotalBig);
+    const cum = quantizeLogits(logits, vocabSize, samplerConfig);
+    const tokId = decoder.decode(cum);
 
     if (stopIds.has(tokId)) {
       callbacks.onStatus(`Done: ${n} tokens, hit EOS.`);
@@ -358,7 +358,7 @@ export async function prefixSearchLlamaCpp(
   const prompt = formatChatPrompt(systemPrompt, userMessage);
   const promptTokens = await llamaCppTokenize(prompt);
 
-  const { vocabSize, probTotal, probTotalBig } = await getLlamaCppModelInfo(promptTokens);
+  const { vocabSize } = await getLlamaCppModelInfo(promptTokens);
 
   // Tokenize the target text
   const targetPrompt = formatChatPrompt(systemPrompt, userMessage) + targetText;
@@ -381,8 +381,8 @@ export async function prefixSearchLlamaCpp(
       `Encoding token ${i + 1}/${targetIds.length}: "${piece}"`,
     );
     const logits = await getLlamaCppLogits(ctx, vocabSize);
-    const cum = quantizeLogits(logits, vocabSize, probTotal, samplerConfig);
-    encoder.encode(cum, probTotalBig, targetIds[i]);
+    const cum = quantizeLogits(logits, vocabSize, samplerConfig);
+    encoder.encode(cum, targetIds[i]);
     ctx.push(targetIds[i]);
     await new Promise((r) => setTimeout(r, 0));
   }
